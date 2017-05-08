@@ -1054,8 +1054,6 @@ int JHttp_download_whole_file_jbp(char *link){
     int num_of_part_file=bp->num_of_part_file;
     int size_of_one_piece=bp->size_of_one_piece;
     int total_piece=bp->total_num_of_piece_of_whole_file;
-    Http_connect_to_server(server_ip, server_port, &socket_fd);
-    long buffer_size=(size_of_one_piece)+1024;
     char *ip_str=bp->server_ip;
     char server_port[12];
     sprintf(server_port, "%d",bp->server_port);
