@@ -35,8 +35,8 @@
 #define jbp_file_correct 1
 #define jbp_file_empty 2
 
-#define max_download_thread 4
-#define download_one_piece_size 1024*200
+#define max_download_thread 6
+#define download_one_piece_size 1024*800
 
 
 
@@ -83,22 +83,21 @@ int Http_query_file_size(char *path, char *host_ip, char *port, int socket_fd, l
 int Http_create_breakpoint_file(char *file_name, FILE **fp_breakpoint, long file_size, long num_of_part_file, long size_of_one_piece,
                                                                                        long total_num_of_piece_of_whole_file,
                                                                                        char *server_ip, int server_port);
-int Http_create_breakpoint_part_file(char *file_name, FILE **fp_breakpoint_part, int part_num, long start_num_of_piece_of_this_part_file,
+int Http_create_breakpoint_part_info(char *file_name, FILE **fp_breakpoint_part, int part_num, long start_num_of_piece_of_this_part_file,
                                                                                  long end_num_of_piece_of_this_part_file,
                                                                                  long size_of_last_incompelet_piece,
                                                                                  long alread_download_num_of_piece);
-int Update_breakpoint_part_file(FILE *fp_breakpoint_part, int num_of_piece_tobe_added);
-int Delete_breakpoint_file(char *file_name, FILE *fp);
+int Update_breakpoint_part_info(FILE *fp_breakpoint_part, int part_num,int num_of_piece_tobe_added);
+int Delete_breakpoint_file(char *file_name);
 
 
-int Http_create_download_file(char *file_name, FILE **fp_download_file,int part);
+int Http_create_download_file(char *file_name, FILE **fp_download_file);
 int Http_restore_orignal_file_name(char *download_part_file_name);
 
 
 int Http_recv_file(int socket_fd, long long range_begin, long long range_end, unsigned char *buffer,long buffer_size,
                                                                                 char *path, char *host_ip, char *port);
 int Save_download_part_of_file(FILE *fp, unsigned char *buffer, long buffer_size, long long file_offset);
-int Merge_all_download_part_file(char *file_name, int part_num);
 
 void *thread_func(void *arg);
 int JHttp_download_whole_file(char *link);

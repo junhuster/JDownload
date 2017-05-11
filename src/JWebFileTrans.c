@@ -273,20 +273,17 @@ int Http_query_file_size(char *path, char *host_ip, char *port, int socket_fd,lo
      return 1;
 
 }
-int Http_create_download_file(char *file_name, FILE **fp_download_file,int part){
+int Http_create_download_file(char *file_name, FILE **fp_download_file){
     /**
      ** check argument error
      */
-     if(file_name==NULL || fp_download_file==NULL || part<0){
+     if(file_name==NULL || fp_download_file==NULL){
 
         printf("Http_create_download_file: argument error\n");
         exit(0);
      }
 
-     char buffer_for_part[max_download_thread+1];
-     sprintf(buffer_for_part,"%d",part);
-     int part_str_length=strlen(buffer_for_part);
-     char *download_file_name=(char *)malloc((strlen(file_name)+5+part_str_length+1)*sizeof(char));
+     char *download_file_name=(char *)malloc((strlen(file_name)+5+1)*sizeof(char));
      if(NULL==download_file_name){
 
         printf("Http_create_download_file: malloc failed\n");
@@ -295,7 +292,6 @@ int Http_create_download_file(char *file_name, FILE **fp_download_file,int part)
      }
      strcpy(download_file_name,file_name);
      strcat(download_file_name,".part");
-     strcat(download_file_name,buffer_for_part);
 
      if(access(download_file_name,F_OK)==0){
         int ret=remove(download_file_name);
@@ -386,39 +382,33 @@ int Http_create_breakpoint_file(char *file_name, FILE **fp_breakpoint, long file
      return 1;
 }
 
-int Http_create_breakpoint_part_file(char *file_name, FILE **fp_breakpoint_part, int part_num, long start_num_of_piece_of_this_part_file,
+int Http_create_breakpoint_part_info(char *file_name, FILE **fp_breakpoint_part, int part_num, long start_num_of_piece_of_this_part_file,
                                                                                  long end_num_of_piece_of_this_part_file,
                                                                                  long size_of_last_incomplete_piece,
                                                                                  long alread_download_num_of_piece){
     if(file_name==NULL || fp_breakpoint_part==NULL || part_num<0){
-        printf("Http_create_breakpoint_part_file, argument error\n");
+        printf("Http_create_breakpoint_part_info, argument error\n");
         exit(0);
     }
 
-    char buffer_for_part_num[6];
-    sprintf(buffer_for_part_num, "%d",part_num);
-    int part_num_str_len=strlen(buffer_for_part_num);
-    char *break_point_part_file_name=(char *)malloc((strlen(file_name)+4+part_num_str_len+1)*sizeof(char));
+    
+    char *break_point_part_file_name=(char *)malloc((strlen(file_name)+4+1)*sizeof(char));
     if(break_point_part_file_name==NULL){
-        printf("Http_create_breakpoint_part_file,malloc failed\n");
+        printf("Http_create_breakpoint_part_info,malloc failed\n");
         exit(0);
     }
 
     strcpy(break_point_part_file_name,file_name);
     strcat(break_point_part_file_name,".jbp");
-    strcat(break_point_part_file_name,buffer_for_part_num);
-
-    if(access(break_point_part_file_name,F_OK)==0){
-        int ret=remove(break_point_part_file_name);
-        if(ret!=0){
-            perror("Http_create_breakpoint_part_file,remove");
-            exit(0);
-        }
+    
+    if(access(break_point_part_file_name,F_OK)!=0){
+        printf("break point file do not exist\n");
+        exit(0);
     }
 
-    *fp_breakpoint_part=fopen(break_point_part_file_name, "w+");
+    *fp_breakpoint_part=fopen(break_point_part_file_name, "r+");
     if(*fp_breakpoint_part==NULL){
-        printf("Http_create_breakpoint_part_file,fopen failed\n");
+        printf("Http_create_breakpoint_part_info,fopen failed\n");
         exit(0);
     }
 
@@ -428,10 +418,11 @@ int Http_create_breakpoint_part_file(char *file_name, FILE **fp_breakpoint_part,
     bpt.size_of_last_incomplete_piece=size_of_last_incomplete_piece;
     bpt.alread_download_num_of_piece=alread_download_num_of_piece;
 
-
+    int offset=sizeof(break_point)+part_num*sizeof(break_point_of_part);
+    fseek(*fp_breakpoint_part,offset,SEEK_SET);
     int ret=fwrite(&bpt, sizeof(break_point_of_part), 1, *fp_breakpoint_part);
     if(ret!=1){
-        printf("Http_create_breakpoint_part_file,fwrite, break_point_of_part,error\n");
+        printf("Http_create_breakpoint_part_info,fwrite, break_point_of_part,error\n");
         exit(0);
     }
 
@@ -448,99 +439,60 @@ int Http_create_breakpoint_part_file(char *file_name, FILE **fp_breakpoint_part,
 }
 
 
-int Update_breakpoint_part_file(FILE *fp_breakpoint_part, int num_of_piece_tobe_added){
+int Update_breakpoint_part_info(FILE *fp_breakpoint_part, int part_num, int num_of_piece_tobe_added){
 
     if(fp_breakpoint_part==NULL || num_of_piece_tobe_added<1){
-        printf("Update_breakpoint_part_file,argument error\n");
+        printf("Update_breakpoint_part_info,argument error\n");
         exit(0);
     }
 
     break_point_of_part *bpt=(break_point_of_part *)malloc(sizeof(break_point_of_part));
     if(bpt==NULL){
-        printf("Update_breakpoint_part_file,malloc failed\n");
+        printf("Update_breakpoint_part_info,malloc failed\n");
         exit(0);
     }
-    fseek(fp_breakpoint_part, 0, SEEK_SET);
+
+    int offset=sizeof(break_point)+sizeof(break_point_of_part)*part_num;
+    fseek(fp_breakpoint_part, offset, SEEK_SET);
     int ret_fread=fread(bpt, sizeof(break_point_of_part), 1, fp_breakpoint_part);
 
     int start_num=bpt->start_num_of_piece_of_this_part_file;
     int end_num=bpt->end_num_of_piece_of_this_part_file;
     bpt->alread_download_num_of_piece=bpt->alread_download_num_of_piece+num_of_piece_tobe_added;
     if((bpt->alread_download_num_of_piece)<=(bpt->end_num_of_piece_of_this_part_file-bpt->start_num_of_piece_of_this_part_file+1+1)){   
-        fseek(fp_breakpoint_part, 0, SEEK_SET);
+        fseek(fp_breakpoint_part, offset, SEEK_SET);
         int ret=fwrite(bpt, sizeof(break_point_of_part), 1, fp_breakpoint_part);
         if(ret!=1){
-            printf("Update_breakpoint_part_file,fwrite failed\n");
+            printf("Update_breakpoint_part_info,fwrite failed\n");
             exit(0);
         }
         fflush(fp_breakpoint_part);
     }else{
-        printf("Update_breakpoint_part_file, num_of_piece_tobe_added not correct\n");
+        printf("Update_breakpoint_part_info, num_of_piece_tobe_added not correct\n");
         exit(0);
     }
 
 }
 
-int Delete_breakpoint_file(char *file_name,FILE *fp){
+int Delete_breakpoint_file(char *file_name){
 
-    if(file_name==NULL || fp==NULL){
+    if(file_name==NULL){
         printf("Delete_breakpoint_file, argument error\n");
         exit(0);
     }
-
-    break_point *bp=(break_point *)malloc(sizeof(break_point));
-    fseek(fp, 0, SEEK_SET);
-    int ret=fread(bp, sizeof(break_point), 1, fp);
-    if(ret!=1){
-        printf("Delete_breakpoint_file,fread failed\n");
-        exit(0);
-    }
-    int num=bp->num_of_part_file;
-
-    char *buffer=(char *)malloc((strlen(file_name)+4+100));
-    for(int i=0;i<num;i++){
-
-        char buffer_part[6];
-        sprintf(buffer_part, "%d",i);
-        strcpy(buffer,file_name);
-        strcat(buffer,".jbp");
-        strcat(buffer,buffer_part);
-       
-        if(access(buffer, F_OK)==0){
-            if(remove(buffer)!=0){
-                perror("Delete_breakpoint_file,remove .jbp_num");
-                exit(0);
-            }
-        }
-
-    }
-
-    for(int i=1;i<num;i++){
-        char buffer_part[6];
-        sprintf(buffer_part, "%d",i);
-        strcpy(buffer,file_name);
-        strcat(buffer,".part");
-        strcat(buffer,buffer_part);
-        
-        if(access(buffer, F_OK)==0){
-            if(remove(buffer)!=0){
-                perror("Delete_breakpoint_file,remove .jbp_num");
-                exit(0);
-            }
-        }
-
-    }
-
-    fclose(fp);
-    strcpy(buffer, file_name);
-    strcat(buffer, ".jbp");
+   
+    char *buffer=(char *)malloc((strlen(file_name)+4+1));
     
+    strcpy(buffer,file_name);
+    strcat(buffer,".jbp");
+        
     if(access(buffer, F_OK)==0){
         if(remove(buffer)!=0){
-            perror("Delete_breakpoint_file,remove .jbp");
+            perror("Delete_breakpoint_file,remove .jbp_num");
             exit(0);
         }
     }
+
 
     if(buffer!=NULL){
         free(buffer);
@@ -612,79 +564,86 @@ int Http_recv_file(int socket_fd, long long range_begin, long long range_end, un
      int download_size=range_end-range_begin+1;
      
      int port_num=atoi(port);
-     int ret0=send(socket_fd,send_buffer,strlen(send_buffer),0);
-     if(ret0!=strlen(send_buffer)){
-        printf("send failed, retry\n");
-        perror("Http_recv_file");
-        exit(0);
-     }
-        int recv_size=0;
-        int length_of_http_head=0;
-        while(1){
-            
-            long ret=recv(socket_fd,buffer+recv_size+length_of_http_head,buffer_size,0);
-            if(ret<=0){
-                
-                recv_size=0;
-                length_of_http_head=0;
-                memset(buffer,0,buffer_size);
-                
-                int ret=close(socket_fd);
-                if(ret!=0){
-                    perror("Http_recv_file");
-                    exit(0);
-                }
-                
-                //seems not need to sleep
-                
-                Http_connect_to_server(host_ip,port_num,&socket_fd);
-                int ret0=send(socket_fd,send_buffer,strlen(send_buffer),0);
-                if(ret0!=strlen(send_buffer)){
-                    printf("send failed, retry\n");
-                    perror("Http_recv_file");
-                    exit(0);
-                }
 
-                continue;
+     int ret0=0;
+     while((ret0=send(socket_fd,send_buffer,strlen(send_buffer),0))!=strlen(send_buffer)){
+        int ret=close(socket_fd);
+        if(ret!=0){
+            perror("Http_recv_file, close in first send");
+            printf("but don't worry, we will try again. if you can't wait,you can just exit \
+                    \nand then execute breakpoint download to complete this download\n\n");
 
-            }
-
-            if(recv_size==0){    
-                char *ptr=strstr(buffer,"Content-Length");
-                if(ptr==NULL){
-                    printf("Http_recv_file: recv buffer error\n%s\n",buffer);
-                    exit(0);
-                }
-                int size=atoll(ptr+strlen("Content-Length")+2);
-                if(size!=download_size){
-                    printf("Http_recv_file: send recv not match\n");
-                    exit(0);
-                }
-                
-                char *ptr2=strstr(buffer,buffer_range+15);
-                if(NULL==ptr2){
-                    printf("Http_recv_file: expected range do not match recv range, %s\n%s\n",buffer,buffer_range+15);
-                    exit(0);
-                }
-
-                char *ptr1=strstr(buffer,"\r\n\r\n");
-                if(ptr1==NULL){
-                    printf("Http_recv_file: http header not correct\n");
-                    exit(0);
-                }
-
-                length_of_http_head=ptr1-(char*)buffer+4;              
-                recv_size=recv_size+ret-length_of_http_head;
-                
-            }else{
-                recv_size+=ret;
-            }      
-                
-            if(recv_size==download_size){
-                    break;
-            }
-            
         }
+        Http_connect_to_server(host_ip, port_num, &socket_fd);
+     }
+
+    int recv_size=0;
+    int length_of_http_head=0;
+    while(1){
+            
+        long ret=recv(socket_fd,buffer+recv_size+length_of_http_head,buffer_size,0);
+        if(ret<=0){
+                
+            recv_size=0;
+            length_of_http_head=0;
+            memset(buffer,0,buffer_size);
+                
+            int ret=close(socket_fd);
+            if(ret!=0){
+                perror("Http_recv_file");
+                exit(0);
+            }
+                
+                
+            Http_connect_to_server(host_ip,port_num,&socket_fd);
+            int ret0=send(socket_fd,send_buffer,strlen(send_buffer),0);
+            if(ret0!=strlen(send_buffer)){
+                   
+                perror("Http_recv_file, send, in while");
+                exit(0);
+
+            }
+
+            continue;
+
+        }
+
+        if(recv_size==0){    
+            char *ptr=strstr(buffer,"Content-Length");
+            if(ptr==NULL){
+                printf("Http_recv_file: recv buffer error\n%s\n",buffer);
+                exit(0);
+            }
+            int size=atoll(ptr+strlen("Content-Length")+2);
+            if(size!=download_size){
+                printf("Http_recv_file: send recv not match\n");
+                exit(0);
+            }
+                
+            char *ptr2=strstr(buffer,buffer_range+15);
+            if(NULL==ptr2){
+                printf("Http_recv_file: expected range do not match recv range, %s\n%s\n",buffer,buffer_range+15);
+                exit(0);
+            }
+
+            char *ptr1=strstr(buffer,"\r\n\r\n");
+            if(ptr1==NULL){
+                printf("Http_recv_file: http header not correct\n");
+                exit(0);
+            }
+
+            length_of_http_head=ptr1-(char*)buffer+4;              
+            recv_size=recv_size+ret-length_of_http_head;
+                
+        }else{
+            recv_size+=ret;
+        }      
+                
+        if(recv_size==download_size){
+                break;
+        }
+            
+    }
 
      return 1;
 }
@@ -709,61 +668,6 @@ int Save_download_part_of_file(FILE *fp, unsigned char *buffer, long buffer_size
 
 }
 
-int Merge_all_download_part_file(char *file_name, int part_num){
-
-    if(file_name==NULL || part_num<1){
-        printf("Merge_all_download_part_file, argument error\n");
-        return -1;
-    }
-
-    char *file_name_buffer=(char *)malloc(strlen(file_name)+5+6);//5 .part, 6 ensure enough memory
-    FILE *fp[part_num];
-    for(int i=0; i<part_num; i++){
-        fp[i]=NULL;
-        char buffer[8];
-        sprintf(buffer, "%d",i);
-        int len=strlen(buffer);
-        strcpy(file_name_buffer,file_name);
-        strcat(file_name_buffer,".part");
-        strcat(file_name_buffer,buffer);
-        if(i==0){
-            fp[i]=fopen(file_name_buffer,"r+");
-            if(fp[i]==NULL){
-                printf("Merge_all_download_part_file, fopen failed\n");
-                return -1;
-            }
-        }else{
-            fp[i]=fopen(file_name_buffer, "r");
-            if(fp[i]==NULL){
-                printf("Merge_all_download_part_file, fopen failed\n");
-                return -1;
-            }
-        }
-    }
-
-    int buffer_size=download_one_piece_size;
-    unsigned char *buffer=(unsigned char *)malloc(buffer_size);
-    if(buffer==NULL){
-        printf("Merge_all_download_part_file, malloc failed\n");
-        return -1;
-    }
-    fseek(fp[0], 0, SEEK_END);
-    for(int i=1;i<part_num;i++){
-        int read_num=0;
-        while((read_num=fread(buffer, 1, buffer_size,fp[i] ))!=0){
-            int write_num=fwrite(buffer, 1, read_num, fp[0]);
-            if(write_num!=read_num){
-                printf("Merge_all_download_part_file, fwrite failed\n");
-                return -1;
-            }
-
-        }
-    }
-
-    return 0;
-}
-
-
 void *thread_func(void *arg){
     if(arg==NULL){
         printf("thread_func, argument error\n");
@@ -775,19 +679,18 @@ void *thread_func(void *arg){
     int part_num=tfa->part_num;
     char *file_name=tfa->file_name;
 
-    char buffer_of_part[6];
-    sprintf(buffer_of_part, "%d",part_num);
-    int part_len=strlen(buffer_of_part);
-    char *jbp_part_file_name=(char *)malloc(strlen(file_name)+4+part_len+1);
+    char *jbp_part_file_name=(char *)malloc(strlen(file_name)+4+1);
     strcpy(jbp_part_file_name,file_name);
     strcat(jbp_part_file_name,".jbp");
-    strcat(jbp_part_file_name,buffer_of_part);
 
     FILE *fp_jbp_part=fopen(jbp_part_file_name, "r+");
     if(fp_jbp_part==NULL){
-        printf("thread_func, fopen fialed\n");
+        perror("thread_func, fopen fialed");
         exit(0);
     }
+
+    int offset=sizeof(break_point)+part_num*sizeof(break_point_of_part);
+    fseek(fp_jbp_part, offset, SEEK_SET);
 
     break_point_of_part bpt;
     int ret=fread(&bpt,sizeof(break_point_of_part),1,fp_jbp_part);
@@ -823,10 +726,10 @@ void *thread_func(void *arg){
     int port_num=atoi(port);
     Http_connect_to_server(ip_str, port_num, &socket_fd);
 
-    char *download_file_part_name=(char *)malloc(strlen(file_name)+5+part_len+1);
+    char *download_file_part_name=(char *)malloc(strlen(file_name)+5+1);
     strcpy(download_file_part_name,file_name);
     strcat(download_file_part_name,".part");
-    strcat(download_file_part_name,buffer_of_part);
+    
     FILE *fp_download_file=fopen(download_file_part_name,"r+");
     if(fp_download_file==NULL){
         printf("thread_func, fopen download part file failed\n");
@@ -842,7 +745,7 @@ void *thread_func(void *arg){
         
         Http_recv_file(socket_fd,range_begin,range_end,buffer,buffer_size,path,ip_str,port);
         
-        long long offset=(i-bpt.start_num_of_piece_of_this_part_file)*(download_one_piece_size);
+        long long offset=(i-1)*(download_one_piece_size);
         
         char *ptr=strstr(buffer,"\r\n\r\n");
         if(NULL==ptr){
@@ -853,7 +756,7 @@ void *thread_func(void *arg){
         ptr+=4;//pass \r\n\r\n
         
         Save_download_part_of_file(fp_download_file,ptr,(download_one_piece_size),offset);
-        Update_breakpoint_part_file(fp_jbp_part, 1);
+        Update_breakpoint_part_info(fp_jbp_part, part_num, 1);
         
      }
 
@@ -867,7 +770,7 @@ void *thread_func(void *arg){
         
         Http_recv_file(socket_fd,range_begin,range_end,buffer,buffer_size,path,ip_str,port);
         
-        long long offset=(piece_num-bpt.start_num_of_piece_of_this_part_file+1)*(download_one_piece_size);
+        long long offset=(piece_num)*(download_one_piece_size);
         
         char *ptr=strstr(buffer,"\r\n\r\n");
         if(NULL==ptr){
@@ -944,10 +847,7 @@ int JHttp_download_whole_file(char *link){
      int size_of_last_piece=file_size%(download_one_piece_size);
      Http_create_breakpoint_file(file_name,&fp_breakpoint_file,file_size,num_of_download_thread,download_one_piece_size,piece_num,ip_str,port_int);
 
-     FILE *fp_breakpoint_part_file[max_download_thread];
-     for(int i=0;i<max_download_thread;i++){
-        fp_breakpoint_part_file[i]=NULL;
-     }
+     FILE *fp_breakpoint_part_file=NULL;
 
      int chunks=piece_num/num_of_download_thread;
      int remainder=piece_num%num_of_download_thread;
@@ -960,26 +860,22 @@ int JHttp_download_whole_file(char *link){
             end_num_of_piece+=remainder;
         }
 
-        Http_create_breakpoint_part_file(file_name, &(fp_breakpoint_part_file[i]), i, start_num_of_piece, end_num_of_piece, size_of_last_piece0, 0);
-        if(fp_breakpoint_part_file[i]!=NULL){
-            fclose(fp_breakpoint_part_file[i]);
-        }
-
+        Http_create_breakpoint_part_info(file_name, &fp_breakpoint_part_file, i, start_num_of_piece, end_num_of_piece, size_of_last_piece0, 0);
         
      }
 
-
-     FILE *fp_download_file[max_download_thread];
-     for(int i=0;i<max_download_thread;i++){
-        fp_download_file[i]=NULL;
-     }
-
-     for(int i=0;i<num_of_download_thread;i++){
-        Http_create_download_file(file_name, &(fp_download_file[i]), i);
-        if(fp_download_file[i]!=NULL){
-            fclose(fp_download_file[i]);
+     if(fp_breakpoint_part_file!=NULL){
+            fclose(fp_breakpoint_part_file);
         }
-     }
+
+     FILE *fp_download_file=NULL;
+
+     
+    Http_create_download_file(file_name, &fp_download_file);
+    if(fp_download_file!=NULL){
+        fclose(fp_download_file);
+    }
+     
 
     pthread_t *thread_id_array=(pthread_t *)malloc(sizeof(pthread_t)*num_of_download_thread);
     for(int i=0;i<num_of_download_thread;i++){
@@ -998,15 +894,12 @@ int JHttp_download_whole_file(char *link){
     } 
 
 
-    Merge_all_download_part_file(file_name, num_of_download_thread);
-
-
     char *download_file_name_part=(char *)malloc(sizeof(char)*(strlen(file_name)+6+1));
     strcpy(download_file_name_part,file_name);
-    strcat(download_file_name_part,".part0");
+    strcat(download_file_name_part,".part");
 
     Http_restore_orignal_file_name(download_file_name_part);
-    Delete_breakpoint_file(file_name, fp_breakpoint_file);
+    Delete_breakpoint_file(file_name);
 
     return 1;
 }
@@ -1073,16 +966,13 @@ int JHttp_download_whole_file_jbp(char *link){
         pthread_join(thread_id_array[i], NULL);
     }
 
-    Merge_all_download_part_file(file_name, num_of_part_file);
-
-
     char *download_file_name_part=(char *)malloc(sizeof(char)*(strlen(file_name)+6+1));
     strcpy(download_file_name_part,file_name);
-    strcat(download_file_name_part,".part0");
+    strcat(download_file_name_part,".part");
 
     Http_restore_orignal_file_name(download_file_name_part);
 
-    Delete_breakpoint_file(file_name, fp);
+    Delete_breakpoint_file(file_name);
 
     return 0;
 
